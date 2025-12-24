@@ -1,89 +1,143 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-bs-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GitHub File Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        /* 기본 스타일 (이 부분을 수정해서 다크모드를 연습해보세요!) */
-        body { font-family: -apple-system, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; background-color: #ffffff; color: #24292e; }
-        h1 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
-        ul { list-style: none; padding: 0; }
-        li { border-bottom: 1px solid #e1e4e8; padding: 12px 0; display: flex; align-items: center; }
-        a { color: #0366d6; text-decoration: none; font-weight: 500; cursor: pointer; }
-        a:hover { text-decoration: underline; }
-        .icon { margin-right: 12px; width: 20px; text-align: center; }
-        .breadcrumb { margin-bottom: 20px; color: #586069; }
-        .breadcrumb a { color: #586069; font-weight: normal; }
-        .btn-back { margin-bottom: 15px; display: inline-block; color: #6a737d; font-size: 0.9em; }
+        body { padding-top: 50px; padding-bottom: 50px; }
+        .breadcrumb-item + .breadcrumb-item::before { content: "/"; }
+        
+        /* 우하단 테마 선택 버튼 스타일 */
+        .theme-switches {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+        .list-group-item { cursor: pointer; transition: background 0.2s; }
+        .list-group-item:hover { background-color: rgba(0,0,0,0.05); }
+        [data-bs-theme="dark"] .list-group-item:hover { background-color: rgba(255,255,255,0.1); }
     </style>
 </head>
 <body>
 
-    <h1 id="repo-title">Loading...</h1>
-    
-    <div class="breadcrumb" id="breadcrumb">
-        </div>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <h1 id="repo-title" class="mb-3 fw-bold">Loading...</h1>
+                
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb" id="breadcrumb"></ol>
+                </nav>
 
-    <ul id="file-list">
-        <li>목록을 불러오는 중...</li>
-    </ul>
+                <div class="card shadow-sm">
+                    <ul class="list-group list-group-flush" id="file-list">
+                        <li class="list-group-item text-center py-5">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="mt-2">파일을 불러오는 중...</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="theme-switches dropdown">
+        <button class="btn btn-primary btn-lg rounded-circle shadow" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-circle-half"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+            <li><button class="dropdown-item" data-bs-theme-value="light"><i class="bi bi-sun-fill me-2"></i> Light</button></li>
+            <li><button class="dropdown-item" data-bs-theme-value="dark"><i class="bi bi-moon-stars-fill me-2"></i> Dark</button></li>
+            <li><button class="dropdown-item active" data-bs-theme-value="auto"><i class="bi bi-palette2 me-2"></i> Auto</button></li>
+        </ul>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // 1. 설정: 사용자 정보 추출
+        /** 테마 제어 로직 (Bootstrap 공식 가이드 기반) **/
+        const getStoredTheme = () => localStorage.getItem('theme');
+        const setStoredTheme = theme => localStorage.setItem('theme', theme);
+
+        const getPreferredTheme = () => {
+            const storedTheme = getStoredTheme();
+            if (storedTheme) return storedTheme;
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        };
+
+        const setTheme = theme => {
+            if (theme === 'auto') {
+                document.documentElement.setAttribute('data-bs-theme', (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+            } else {
+                document.documentElement.setAttribute('data-bs-theme', theme);
+            }
+        };
+
+        // 테마 변경 버튼 클릭 이벤트
+        window.addEventListener('DOMContentLoaded', () => {
+            setTheme(getPreferredTheme());
+
+            document.querySelectorAll('[data-bs-theme-value]').forEach(toggle => {
+                toggle.addEventListener('click', () => {
+                    const theme = toggle.getAttribute('data-bs-theme-value');
+                    setStoredTheme(theme);
+                    setTheme(theme);
+                    
+                    // UI 업데이트 (체크 표시 등)
+                    document.querySelectorAll('[data-bs-theme-value]').forEach(el => el.classList.remove('active'));
+                    toggle.classList.add('active');
+                });
+            });
+        });
+
+        /** 파일 탐색 로직 (이전 로직 유지/개선) **/
         const user = window.location.hostname.split('.')[0];
-        const repo = window.location.pathname.split('/')[1];
-        
-        // 2. 현재 경로 파악 (?path=... 파라미터 읽기)
+        const repo = window.location.pathname.split('/')[1] || "My Repo";
         const urlParams = new URLSearchParams(window.location.search);
         const currentPath = urlParams.get('path') || "";
 
         async function renderFiles() {
             const fileListElement = document.getElementById('file-list');
             document.getElementById('repo-title').innerText = repo;
-
-            // 브레드크럼(경로 표시) 생성
             updateBreadcrumb();
 
             try {
-                // API 호출 시 경로(path) 지정
                 const response = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${currentPath}`);
                 const items = await response.json();
 
-                if (!Array.isArray(items)) {
-                    fileListElement.innerHTML = '<li>내용을 불러올 수 없습니다.</li>';
-                    return;
-                }
-
                 fileListElement.innerHTML = '';
 
-                // 상위 폴더로 가기 버튼 (루트가 아닐 때만)
                 if (currentPath !== "") {
-                    const backLi = document.createElement('li');
-                    backLi.innerHTML = `<span class="icon">⤴️</span><a href="?path=${getParentPath(currentPath)}">.. (상위 폴더)</a>`;
-                    fileListElement.appendChild(backLi);
+                    addFileItem('.. (상위 폴더)', `?path=${getParentPath(currentPath)}`, 'bi-arrow-90deg-up', true);
                 }
 
+                if (!Array.isArray(items)) throw new Error();
+
                 items.forEach(item => {
-                    // 현재 index.html 파일은 목록에서 제외
                     if (item.path === 'index.html') return;
-
-                    const li = document.createElement('li');
                     const isDir = item.type === 'dir';
-                    const icon = isDir ? '📁' : '📄';
-                    
-                    // 폴더면 쿼리 파라미터를 변경하고, 파일이면 실제 경로로 연결
-                    const linkHref = isDir 
-                        ? `?path=${encodeURIComponent(item.path)}` 
-                        : item.html_url; // 소스 코드를 보려면 html_url, 직접 실행하려면 item.path
-
-                    li.innerHTML = `<span class="icon">${icon}</span><a href="${linkHref}">${item.name}</a>`;
-                    fileListElement.appendChild(li);
+                    const icon = isDir ? 'bi-folder-fill text-warning' : 'bi-file-earmark-text text-secondary';
+                    const link = isDir ? `?path=${encodeURIComponent(item.path)}` : item.html_url;
+                    addFileItem(item.name, link, icon, false);
                 });
-
-            } catch (error) {
-                fileListElement.innerHTML = '<li>오류가 발생했습니다. API 호출 제한을 확인하세요.</li>';
+            } catch (e) {
+                fileListElement.innerHTML = '<li class="list-group-item text-danger text-center">API 호출 제한이거나 잘못된 경로입니다.</li>';
             }
+        }
+
+        function addFileItem(name, link, iconClass, isBack) {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex align-items-center py-3';
+            li.innerHTML = `
+                <i class="bi ${iconClass} me-3 fs-5"></i>
+                <a href="${link}" class="text-decoration-none flex-grow-1 stretched-link ${isBack ? 'text-muted' : 'text-body-emphasis'}">${name}</a>
+                <i class="bi bi-chevron-right text-muted small"></i>
+            `;
+            document.getElementById('file-list').appendChild(li);
         }
 
         function getParentPath(path) {
@@ -94,13 +148,15 @@
 
         function updateBreadcrumb() {
             const bc = document.getElementById('breadcrumb');
-            let html = `<a href="?path=">${repo}</a>`;
+            let html = `<li class="breadcrumb-item"><a href="?path=" class="text-decoration-none"><i class="bi bi-house-door"></i></a></li>`;
             const parts = currentPath.split('/').filter(p => p);
-            
             let accumulatedPath = "";
-            parts.forEach(part => {
+            parts.forEach((part, index) => {
                 accumulatedPath += (accumulatedPath ? '/' : '') + part;
-                html += ` / <a href="?path=${encodeURIComponent(accumulatedPath)}">${part}</a>`;
+                const isLast = index === parts.length - 1;
+                html += `<li class="breadcrumb-item ${isLast ? 'active' : ''}">
+                    ${isLast ? part : `<a href="?path=${encodeURIComponent(accumulatedPath)}" class="text-decoration-none">${part}</a>`}
+                </li>`;
             });
             bc.innerHTML = html;
         }
